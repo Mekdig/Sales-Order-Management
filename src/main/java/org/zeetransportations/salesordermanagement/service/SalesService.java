@@ -5,8 +5,8 @@ import org.springframework.stereotype.Service;
 import org.zeetransportations.salesordermanagement.entity.Sales;
 import org.zeetransportations.salesordermanagement.respository.SalesRepository;
 
+import java.math.BigDecimal;
 import java.util.NoSuchElementException;
-import java.util.Optional;
 
 @Service
 public class SalesService {
@@ -14,41 +14,65 @@ public class SalesService {
     @Autowired
     private SalesRepository salesRepository;
 
-    public Sales getOrderInfo(int orderId, Sales sales){
-        Optional<Sales>salesOptional = salesRepository.findById(orderId);
-        if(salesOptional.isEmpty()){
-            throw new NoSuchElementException();
-        }
-
-        Sales sales1 = salesOptional.get();
-        sales1.setDiscount(sales.getDiscount());
-        sales1.setNotes(sales.getNotes());
-        sales1.setProducts(sales.getProducts());
-        sales1.setShippingAddress(sales.getShippingAddress());
-
-        Sales saveSalesInfo = salesRepository.save(sales1);
-        return saveSalesInfo;
+    // Get Order by ID (Fixed)
+    public Sales getOrderInfo(Long orderId) {
+        return salesRepository.findById(orderId)
+                .orElseThrow(() -> new NoSuchElementException("Order not found with ID: " + orderId));
     }
 
-    public Sales postOrderInfo(Sales sales){
+    // Create New Order (Fixed)
+    public Sales postOrderInfo(Sales sales) {
+        // Ensure products are linked to sales
+        if (sales.getProducts() != null) {
+            sales.getProducts().forEach(product -> product.setSales(sales));
+        }
+
+        // Calculate Total Amount
+        BigDecimal totalAmount = calculateTotalAmount(sales);
+        sales.setTotalAmount(totalAmount);
+
+        // Set default status
+        sales.setStatus("Pending");
+
         return salesRepository.save(sales);
     }
 
-    public Sales putOrderInfo(int orderId, Sales sales){
-        Optional<Sales>salesOptional1 = salesRepository.findById(orderId);
-        if(salesOptional1.isEmpty()){
-            throw new NoSuchElementException();
+    // Update Existing Order (Fixed)
+    public Sales putOrderInfo(Long orderId, Sales updatedSales) {
+        Sales existingOrder = salesRepository.findById(orderId)
+                .orElseThrow(() -> new NoSuchElementException("Order not found with ID: " + orderId));
+
+        // Update fields
+        existingOrder.setDiscount(updatedSales.getDiscount());
+        existingOrder.setNotes(updatedSales.getNotes());
+        existingOrder.setShippingAddress(updatedSales.getShippingAddress());
+
+        // Ensure products are linked to the existing order
+        if (updatedSales.getProducts() != null) {
+            updatedSales.getProducts().forEach(product -> product.setSales(existingOrder));
         }
+        existingOrder.setProducts(updatedSales.getProducts());
 
-        Sales sales1 = salesOptional1.get();
-        sales1.setDiscount(sales.getDiscount());
-        sales1.setNotes(sales.getNotes());
-        sales1.setProducts(sales.getProducts());
-        sales1.setShippingAddress(sales.getShippingAddress());
+        // Recalculate Total Amount
+        BigDecimal updatedTotalAmount = calculateTotalAmount(existingOrder);
+        existingOrder.setTotalAmount(updatedTotalAmount);
 
-        Sales saveSalesInfo = salesRepository.save(sales1);
-        return saveSalesInfo;
+        return salesRepository.save(existingOrder);
     }
 
-}
+    // Helper Method: Calculate Total Amount
+    private BigDecimal calculateTotalAmount(Sales sales) {
+        if (sales.getProducts() == null) {
+            return BigDecimal.ZERO;
+        }
 
+        BigDecimal totalAmount = sales.getProducts().stream()
+                .map(product -> product.getPrice().multiply(BigDecimal.valueOf(product.getQuantity())))
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .subtract(sales.getDiscount() != null ? sales.getDiscount() : BigDecimal.ZERO); // Fix: Avoid NullPointerException
+
+        return totalAmount;
+    }
+
+
+}

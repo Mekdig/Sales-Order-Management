@@ -8,7 +8,7 @@ import lombok.Data;
 public class ShippingAddress {
 
     private String street;
+    private String city;
     private String state;
-    private Integer zipcode;
-
+    private String zipcode;
 }
